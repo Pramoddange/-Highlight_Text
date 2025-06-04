@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced Text Highlighter</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #eef1f5;
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+        }
+        .input-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 8px;
+            color: #444;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        button {
+            padding: 12px 20px;
+            font-size: 16px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            width: 100%;
+            transition: background-color 0.2s;
+        }
+        button:hover {
+            background-color: #0069d9;
+        }
+        iframe {
+            margin-top: 20px;
+            width: 100%;
+            height: 500px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background: white;
+        }
+        mark {
+            background-color: #ffeb3b;
+            color: black;
+            padding: 0 2px;
+        }
+        .locator-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            table-layout: fixed;
+        }
+        .locator-table th, .locator-table td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+            word-break: break-word;
+        }
+        .locator-table th {
+            background-color: #f8f9fa;
+            font-weight: bold;
+        }
+        .locator-table tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .pagination-container {
+            display: flex;
+           justify-content: flex-end;
+            margin-top: 15px;
+            padding: 10px 0;
+        }
+        .pagination-info {
+            font-size: 14px;
+            color: #666;
+        }
+        .pagination-buttons {
+            display: flex;
+            gap: 5px;
+        }
+        .page-btn {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            background-color: #f8f9fa;
+            color: #007bff;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .page-btn:hover {
+            background-color: #e9ecef;
+        }
+        .page-btn.active {
+            background-color: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+        .page-btn.disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .status-message {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <h1>Enhanced Text Highlighter</h1>
+    <div class="container">
+        <div class="input-group">
+            <label for="urlInput">Enter Page URL:</label>
+            <input type="text" id="urlInput" placeholder="https://example.com" value="https://rahulshettyacademy.com/AutomationPractice/">
+        </div>
+        <div class="input-group">
+            <label for="textInput">Text to Highlight:</label>
+            <input type="text" id="textInput" placeholder="Enter text to highlight" value="Page">
+        </div>
+        <button onclick="highlightText()">Highlight Text</button>
+        <div id="statusMessage" class="status-message" style="display: none;"></div>
+        <div id="locatorTableContainer"></div>
+        <iframe id="previewFrame" title="Preview"></iframe>
+    </div>
+
+    <script>
+        async function highlightText() {
+            const url = document.getElementById("urlInput").value.trim();
+            const word = document.getElementById("textInput").value.trim();
+            const iframe = document.getElementById("previewFrame");
+            const statusMessage = document.getElementById("statusMessage");
+
+            // Clear previous status and table
+            statusMessage.style.display = "none";
+            document.getElementById("locatorTableContainer").innerHTML = "";
+
+            if (!url || !word) {
+                showStatus("Please enter both URL and text to highlight.", "error");
+                return;
+            }
+
+            try {
+                showStatus("Loading and processing page...", "info");
+                
+                // Use a proxy to avoid CORS issues (you'll need to implement this server-side)
+                const proxyUrl = `http://localhost:3000/proxy?url=${encodeURIComponent(url)}`;
+                const response = await fetch(proxyUrl);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const html = await response.text();
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, "text/html");
+
+                const regex = new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+                let matchCount = 0;
+
+                function walkAndHighlight(node) {
+                    if (node.nodeType === Node.TEXT_NODE) {
+                        const parent = node.parentNode;
+                        if (!parent || parent.tagName === 'SCRIPT' || parent.tagName === 'STYLE') return;
+
+                        const originalText = node.nodeValue;
+                        const matches = [...originalText.matchAll(regex)];
+                        if (matches.length === 0) return;
+
+                        matchCount += matches.length;
+                        const fragments = [];
+                        let lastIndex = 0;
+
+                        for (const match of matches) {
+                            const { index } = match;
+                            if (index > lastIndex) {
+                                fragments.push(document.createTextNode(originalText.slice(lastIndex, index)));
+                            }
+
+                            const mark = document.createElement("mark");
+                            mark.textContent = match[0];
+                            mark.setAttribute('data-highlight-id', matchCount);
+                            fragments.push(mark);
+                            lastIndex = index + match[0].length;
+                        }
+
+                        if (lastIndex < originalText.length) {
+                            fragments.push(document.createTextNode(originalText.slice(lastIndex)));
+                        }
+
+                        const fragmentWrapper = document.createDocumentFragment();
+                        fragments.forEach(fragment => fragmentWrapper.appendChild(fragment));
+                        parent.replaceChild(fragmentWrapper, node);
+                    } 
+                    else if (node.nodeType === Node.ELEMENT_NODE) {
+                        Array.from(node.childNodes).forEach(child => walkAndHighlight(child));
+                    }
+                }
+
+                // Path calculation functions
+                function getXPath(el) {
+    if (!el || el.nodeType !== 1) return "";
+
+    if (el.id) {
+        return `//*[@id="${el.id}"]`;
+    }
+
+    const parts = [];
+
+    while (el && el.nodeType === 1) {
+        let index = 1;
+        let sibling = el.previousElementSibling;
+        while (sibling) {
+            if (sibling.tagName === el.tagName) index++;
+            sibling = sibling.previousElementSibling;
+        }
+
+        const tagName = el.tagName.toLowerCase();
+        const segment = `${tagName}[${index}]`;
+        parts.unshift(segment);
+
+        el = el.parentNode;
+
+        // If we hit an element with an ID, break early and prepend it
+        if (el && el.nodeType === 1 && el.id) {
+            parts.unshift(`*[@id="${el.id}"]`);
+            break;
+        }
+    }
+
+    return `//${parts.join("/")}`;
+}
+
+ function getFullXPath(element) {
+    if (!element || element.nodeType !== 1) return "";
+
+    let xpath = "";
+    while (element && element.nodeType === 1) {
+        const tagName = element.tagName.toLowerCase();
+
+        // Stop when we reach <html>
+        if (tagName === "html") {
+            xpath = "/html" + xpath;
+            break;
+        }
+
+        // If body, add /body
+        if (tagName === "body") {
+            xpath = "/body" + xpath;
+            element = element.parentNode;
+            continue;
+        }
+
+        // Find index among siblings
+        let index = 1;
+        let sibling = element.previousElementSibling;
+        while (sibling) {
+            if (sibling.tagName === element.tagName) index++;
+            sibling = sibling.previousElementSibling;
+        }
+
+        const tagPart = index > 1 ? `${tagName}[${index}]` : tagName;
+        xpath = `/${tagPart}${xpath}`;
+        element = element.parentNode;
+    }
+
+    return xpath;
+}
+
+
+                function getCssPath(el) {
+                    if (!el) return "";
+                    const path = [];
+                    while (el && el.nodeType === 1) {
+                        let selector = el.tagName.toLowerCase();
+                        if (el.id) {
+                            selector += `#${el.id}`;
+                            path.unshift(selector);
+                            break;
+                        } else {
+                            let sib = el, nth = 1;
+                            while (sib = sib.previousElementSibling) {
+                                if (sib.tagName === el.tagName) nth++;
+                            }
+                            selector += nth > 1 ? `:nth-of-type(${nth})` : "";
+                        }
+                        path.unshift(selector);
+                        el = el.parentNode;
+                    }
+                    return path.join(" > ");
+                }
+
+                walkAndHighlight(doc.body);
+                
+                // Generate the locators table with pagination
+                generateLocatorsTable(doc, matchCount);
+
+                // Display the highlighted content in iframe
+                iframe.srcdoc = doc.documentElement.outerHTML;
+                showStatus(`Successfully highlighted ${matchCount} occurrences of "${word}".`, "success");
+                
+            } catch (error) {
+                console.error("Error:", error);
+                showStatus(`Error: ${error.message}`, "error");
+            }
+        }
+
+function generateLocatorsTable(doc, totalMatches) {
+            const marks = doc.querySelectorAll("mark");
+            const container = document.getElementById("locatorTableContainer");
+            
+            if (marks.length === 0) {
+                container.innerHTML = "<p>No matches found to display.</p>";
+                return;
+            }
+
+            const allRows = Array.from(marks).map((mark, index) => {
+                const parent = mark.parentElement;
+                const id = parent?.id || "-";
+                const name = parent?.getAttribute("name") || "-";
+                const cssPath = getCssPath(parent);
+                const fullXpath = getFullXPath(parent);
+                const xpath = getXPath(parent);
+               const tagName = parent.tagName;
+              const type = getElementTypeName(tagName);
+                return {
+                    id: index + 1,
+                    highlightId: mark.getAttribute("data-highlight-id"),
+                    elementId: id,
+                    elementName: name,
+                    fullXpath,
+                    xpath,
+                    cssPath,
+                    text: mark.textContent,
+                    type
+                };
+            });
+
+            const rowsPerPage = 10;
+            let currentPage = 1;
+            const totalPages = Math.ceil(allRows.length / rowsPerPage);
+
+            function renderTable() {
+                const start = (currentPage - 1) * rowsPerPage;
+                const end = start + rowsPerPage;
+                const currentRows = allRows.slice(start, end);
+
+                const tableHTML = `
+                    <div class="pagination-info">
+                        Showing ${start + 1}-${Math.min(end, allRows.length)} of ${allRows.length} matches
+                    </div>
+                    <table class="locator-table">
+                        <thead>
+                            <tr>
+                                <th width="5%">#</th>
+                                <th width="10%">ID</th>
+                                <th width="10%">Name</th>
+                                <th width="25%">Full XPath</th>
+                                <th width="25%">XPath</th>
+                                <th width="25%">CSS Path</th>
+                                <th width="10%">Type</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${currentRows.map(row => `
+                               <tr onclick="focusHighlight(${row.highlightId})" style="cursor: pointer;">
+
+                                    <td>${row.id}</td>
+                                    <td>${row.elementId}</td>
+                                    <td>${row.elementName}</td>
+                                    <td><code>${row.fullXpath}</code></td>
+                                    <td><code>${row.xpath}</code></td>
+                                    <td><code>${row.cssPath}</code></td>
+                                    <td>${row.type}</td>
+                                </tr>
+                            `).join("")}
+                        </tbody>
+                    </table>
+                    <div class="pagination-container">
+                        <div class="pagination-buttons">
+                            ${currentPage > 1 ? 
+                                `<button class="page-btn" onclick="changePage(${currentPage - 1})">Previous</button>` : 
+                                `<button class="page-btn disabled" disabled>Previous</button>`}
+                            
+                            ${Array.from({length: Math.min(5, totalPages)}, (_, i) => {
+                                const page = Math.max(1, Math.min(totalPages - 4, currentPage - 2)) + i;
+                                return `<button class="page-btn ${page === currentPage ? 'active' : ''}" 
+                                        onclick="changePage(${page})">${page}</button>`;
+                            }).join("")}
+                            
+                            ${currentPage < totalPages ? 
+                                `<button class="page-btn" onclick="changePage(${currentPage + 1})">Next</button>` : 
+                                `<button class="page-btn disabled" disabled>Next</button>`}
+                        </div>
+                    </div>
+                `;
+
+                container.innerHTML = tableHTML;
+            }
+
+            window.changePage = function(page) {
+                if (page < 1 || page > totalPages || page === currentPage) return;
+                currentPage = page;
+                renderTable();
+                // Scroll to top of table
+                container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            };
+
+            renderTable();
+        }
+        function focusHighlight(highlightId) {
+    const iframe = document.getElementById("previewFrame");
+    const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+
+    const mark = iframeDoc.querySelector(`mark[data-highlight-id="${highlightId}"]`);
+    if (mark) {
+        // Remove previous highlights
+        iframeDoc.querySelectorAll('mark').forEach(el => {
+            el.style.outline = '';
+            el.style.backgroundColor = '#ffeb3b'; // reset original
+        });
+
+        mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        mark.style.outline = '3px solid red';
+        mark.style.backgroundColor = '#b2fab4';
+    }
+}
+function getElementTypeName(tagName) {
+    const map = {
+        'button': 'Button',
+        'input': 'Input Field',
+        'select': 'Dropdown',
+        'textarea': 'Text Area',
+        'a': 'Link',
+        'img': 'Image',
+        'label': 'Label',
+        'table': 'Table',
+        'tr': 'Row',
+        'td': 'Column',
+        'th': 'Column Header',
+        'div': 'Section',
+        'span': 'Text Span',
+        'ul': 'List',
+        'li': 'List Item',
+        'option':'Option'
+    };
+
+    tagName = tagName.toLowerCase();
+    return map[tagName] || `Text <${tagName}>`;
+}
+
+
+        function showStatus(message, type) {
+            const statusMessage = document.getElementById("statusMessage");
+            statusMessage.textContent = message;
+            statusMessage.className = `status-message ${type}`;
+            statusMessage.style.display = "block";
+        }
+
+        // Make helper functions global for the table generation
+       function getXPath(el) {
+    if (!el || el.nodeType !== 1) return "";
+
+    if (el.id) {
+        return `//*[@id="${el.id}"]`;
+    }
+
+    const parts = [];
+
+    while (el && el.nodeType === 1) {
+        let index = 1;
+        let sibling = el.previousElementSibling;
+        while (sibling) {
+            if (sibling.tagName === el.tagName) index++;
+            sibling = sibling.previousElementSibling;
+        }
+
+        const tagName = el.tagName.toLowerCase();
+        const segment = `${tagName}[${index}]`;
+        parts.unshift(segment);
+
+        el = el.parentNode;
+
+        // If we hit an element with an ID, break early and prepend it
+        if (el && el.nodeType === 1 && el.id) {
+            parts.unshift(`*[@id="${el.id}"]`);
+            break;
+        }
+    }
+
+    return `//${parts.join("/")}`;
+}
+
+
+        function getFullXPath(el) {
+            if (!el || el.nodeType !== 1) return "";
+            const segments = [];
+            while (el && el.nodeType === 1) {
+                let index = 1;
+                let sibling = el.previousElementSibling;
+                while (sibling) {
+                    if (sibling.tagName === el.tagName) index++;
+                    sibling = sibling.previousElementSibling;
+                }
+                segments.unshift(`${el.tagName.toLowerCase()}[${index}]`);
+                el = el.parentNode;
+            }
+            return `/${segments.join("/")}`;
+        }
+
+        function getCssPath(el) {
+            if (!el) return "";
+            const path = [];
+            while (el && el.nodeType === 1) {
+                let selector = el.tagName.toLowerCase();
+                if (el.id) {
+                    selector += `#${el.id}`;
+                    path.unshift(selector);
+                    break;
+                } else {
+                    let sib = el, nth = 1;
+                    while (sib = sib.previousElementSibling) {
+                        if (sib.tagName === el.tagName) nth++;
+                    }
+                    selector += nth > 1 ? `:nth-of-type(${nth})` : "";
+                }
+                path.unshift(selector);
+                el = el.parentNode;
+            }
+            return path.join(" > ");
+        }
+    </script>
+</body>
+</html>
